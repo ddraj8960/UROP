@@ -1,0 +1,56 @@
+{
+  "seed": 42,
+  "n_dev": 100,
+  "n_test": 300,
+  "n_ablation": 150,
+  "built_at": "2026-09-29T19:02:46.743373+00:00",
+  "git_commit": "unknown",
+  "python_version": "3.14.3",
+  "pydantic_version": "2.12.5",
+  "files": {
+    "truthfulqa_dev.jsonl": {
+      "rows": 100,
+      "sha256": "8737e5a53fca8f69a77ab0a26e21cb3c1b35a73cdfc29d46c53ed8ed94ac59ad"
+    },
+    "truthfulqa_test.jsonl": {
+      "rows": 300,
+      "sha256": "e9740c62d7b732c6f4d34affc87a1892b898a035d7bac1bc79dd16c5fba0bcea"
+    },
+    "fever_dev.jsonl": {
+      "rows": 100,
+      "sha256": "7f3d349099ad8eeea37d1f9ad994553ac84274076318fe4bf584d32d9adf02e1"
+    },
+    "fever_test.jsonl": {
+      "rows": 300,
+      "sha256": "8769f3cdf308ba27322b25582240d0517cc117e729cfbb4ce41317f325870742"
+    },
+    "hotpotqa_dev.jsonl": {
+      "rows": 100,
+      "sha256": "5192187981c4cb5bd008d6d19903ae32961ea7a7c51016e047dd4e5163acb886"
+    },
+    "hotpotqa_test.jsonl": {
+      "rows": 300,
+      "sha256": "bafbca9eee0ee5c1ad566c484f1fb2fd1fd69ecb64880bc5e28eee3c969fb080"
+    }
+  },
+  "datasets": {
+    "truthfulqa": {
+      "hf_id": "truthful_qa/generation/validation",
+      "revision": "0.0.0",
+      "raw_rows": 817,
+      "filtered_rows": 817
+    },
+    "fever": {
+      "source_url": "https://fever.ai/download/fever/shared_task_dev.jsonl",
+      "revision": "e89865bfe1b4dd054e03dd57d7241a6fde24862905f31117cf0cd719f7c78df7",
+      "raw_rows": 19998,
+      "filtered_rows": 19998
+    },
+    "hotpotqa": {
+      "source_url": "https://huggingface.co/datasets/hotpotqa/hotpot_qa/resolve/main/distractor/validation-00000-of-00001.parquet",
+      "revision": "c20b638ca82b21d04fe12e14ff417ad05153d4d215a65de54497fca4e972f7c6",
+      "raw_rows": 7405,
+      "filtered_rows": 7405
+    }
+  }
+}

@@ -1,0 +1,30 @@
+data:
+  seed: 42
+  n_dev: 100
+  n_test: 300
+  n_ablation: 150
+  samples_dir: data/samples
+  datasets:
+    truthfulqa:
+      hf_id: truthfulqa/truthful_qa
+      config: generation
+      split: validation
+      revision: null          # filled in after first live fetch; e.g. "0dea940ce..."
+    fever:
+      download_url: "https://fever.ai/download/fever/shared_task_dev.jsonl"
+      revision: null          # sha256 of the downloaded file; filled in after first fetch
+    hotpotqa:
+      hf_id: hotpotqa/hotpot_qa
+      config: distractor
+      split: validation
+      revision: null          # filled in after first live fetch
+
+live:
+  enabled: false                     # master switch; false = benchmark behaviour
+  as_of_date: today                  # "today" or an ISO date; resolved once per run
+  api_cache_ttl_hours: 24            # wiki_api / wikidata response cache only
+  max_queries_time_sensitive: 3      # normal cap stays as it is
+  min_live_passages: 3               # slots reserved for live sources in top-k
+  recency_half_life_days: 365
+  local_corpus_snapshot: "2018-06-01"   # approximate snapshot date
+  hedge_when_undated: true

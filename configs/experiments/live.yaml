@@ -1,0 +1,10 @@
+# Experiment config enabling live time-sensitive features
+live:
+  enabled: true
+  as_of_date: today
+  api_cache_ttl_hours: 24
+  max_queries_time_sensitive: 3
+  min_live_passages: 3
+  recency_half_life_days: 365
+  local_corpus_snapshot: "2018-06-01"
+  hedge_when_undated: true

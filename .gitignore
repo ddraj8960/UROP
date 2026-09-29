@@ -1,0 +1,14 @@
+data/*
+!data/samples/
+!data/README.md
+runs/
+indexes/
+scratch/
+.env
+.cache/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/

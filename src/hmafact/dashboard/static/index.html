@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HMA-Fact — Multi-Agent Fact Verification Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+  <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+  <style>
+    :root {
+      --bg-dark: #0b0f19;
+      --bg-card: rgba(22, 30, 49, 0.75);
+      --bg-card-border: rgba(255, 255, 255, 0.08);
+      --accent-cyan: #00f2fe;
+      --accent-blue: #4facfe;
+      --accent-emerald: #10b981;
+      --accent-amber: #f59e0b;
+      --accent-rose: #ef4444;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      min-height: 100vh;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(0, 242, 254, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(139, 92, 246, 0.08) 0%, transparent 40%);
+    }
+
+    /* Navbar */
+    .navbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1.25rem 2.5rem;
+      background: rgba(11, 15, 25, 0.85);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--bg-card-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 800;
+      color: #000;
+      font-size: 1.2rem;
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+    }
+
+    .brand-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, #fff, #94a3b8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-badge {
+      font-size: 0.75rem;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--accent-emerald);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      padding: 0.2rem 0.6rem;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+
+    .status-group {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--accent-emerald);
+      box-shadow: 0 0 8px var(--accent-emerald);
+    }
+
+    /* Container */
+    .container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 2rem 2.5rem;
+    }
+
+    /* Search Control Header */
+    .control-card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+      margin-bottom: 2rem;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    }
+
+    .control-row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .input-box {
+      flex: 1;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 0.85rem 1.25rem;
+      color: #fff;
+      font-size: 0.95rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .input-box:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
+    }
+
+    .sample-select {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      outline: none;
+      cursor: pointer;
+      max-width: 250px;
+    }
+
+    .btn-verify {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+      color: #0b0f19;
+      font-weight: 700;
+      border: none;
+      border-radius: 10px;
+      padding: 0.85rem 1.75rem;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .btn-verify:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
+    }
+
+    .btn-compare {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-weight: 600;
+      border-radius: 10px;
+      padding: 0.85rem 1.25rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-compare:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    /* Hero Response Section */
+    .hero-response {
+      background: linear-gradient(135deg, rgba(17, 24, 39, 0.9), rgba(30, 41, 59, 0.9));
+      border: 1px solid rgba(0, 242, 254, 0.25);
+      border-radius: 16px;
+      padding: 1.75rem 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 12px 35px rgba(0, 242, 254, 0.08);
+      position: relative;
+    }
+
+    .hero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .hero-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .verdict-badge {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.35rem 0.9rem;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .verdict-CONTRADICTED { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+    .verdict-SUPPORTED { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+    .verdict-PARTIALLY_SUPPORTED { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+    .verdict-CONFLICTING_EVIDENCE { background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); }
+    .verdict-INSUFFICIENT_EVIDENCE { background: rgba(156, 163, 175, 0.2); color: #d1d5db; border: 1px solid rgba(156, 163, 175, 0.4); }
+
+    .hero-text {
+      font-size: 1.15rem;
+      line-height: 1.7;
+      color: #f3f4f6;
+    }
+
+    .citation-pill {
+      display: inline-block;
+      background: rgba(0, 242, 254, 0.15);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      padding: 0.1rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      margin-left: 0.3rem;
+      cursor: pointer;
+    }
+
+    /* Grid Layout for Graph & Claims */
+    .grid-workspace {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 2rem;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(12px);
+    }
+
+    .card-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    #graph-container {
+      width: 100%;
+      height: 480px;
+      background: rgba(10, 14, 23, 0.9);
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    /* Claims Table */
+    .claim-item {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      transition: all 0.2s;
+    }
+
+    .claim-item:hover {
+      border-color: rgba(0, 242, 254, 0.3);
+    }
+
+    .claim-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .claim-id {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .claim-text {
+      font-size: 0.95rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    .claim-meta {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .correction-box {
+      margin-top: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      background: rgba(239, 68, 68, 0.1);
+      border-left: 3px solid var(--accent-rose);
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: #fca5a5;
+    }
+
+    /* Loader */
+    .loader-overlay {
+      display: none;
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(11, 15, 25, 0.8);
+      backdrop-filter: blur(6px);
+      border-radius: 16px;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .spinner {
+      width: 45px;
+      height: 45px;
+      border: 4px solid rgba(0, 242, 254, 0.1);
+      border-top: 4px solid var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="brand">
+      <div class="brand-icon">H</div>
+      <div>
+        <div class="brand-title">HMA-Fact</div>
+        <div style="font-size: 0.7rem; color: var(--text-muted);">Multi-Agent Fact Verification Framework</div>
+      </div>
+      <span class="brand-badge">Modules 0–8 Active</span>
+    </div>
+
+    <div class="status-group">
+      <div class="status-item"><div class="dot"></div> OpenRouter LLM: <b>meta-llama/llama-3.1-8b-instruct</b></div>
+      <div class="status-item"><div class="dot"></div> Wikipedia Retrieval API (Cached)</div>
+      <div class="status-item"><div class="dot"></div> PyTest: <b>74/74 Passed</b></div>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- Input Controls -->
+    <div class="control-card">
+      <div class="control-row">
+        <input type="text" id="query-input" class="input-box" placeholder="Enter a question or claim to verify (e.g. Where is the Eiffel Tower located and when was it built?)..." value="Where is the Eiffel Tower located and when was it built?">
+        
+        <select id="sample-select" class="sample-select">
+          <option value="">-- Load Benchmark Sample --</option>
+        </select>
+
+        <button id="btn-verify" class="btn-verify">
+          <span>✨</span> Verify Facts
+        </button>
+        <button id="btn-compare" class="btn-compare">
+          ⚡ Compare Baselines
+        </button>
+      </div>
+    </div>
+
+    <!-- Hero Verification Response -->
+    <div class="hero-response" id="hero-card" style="display: none;">
+      <div class="loader-overlay" id="hero-loader">
+        <div class="spinner"></div>
+        <div style="font-weight: 600; color: var(--accent-cyan);">Executing Multi-Agent Evidence Graph Verification...</div>
+      </div>
+
+      <div class="hero-header">
+        <div class="hero-title">
+          <span>🛡️</span> Fact-Checked Synthesized Response
+        </div>
+        <div class="verdict-badge" id="hero-verdict-badge">SUPPORTED</div>
+      </div>
+
+      <div class="hero-text" id="hero-final-answer">
+        Loading...
+      </div>
+
+      <div style="margin-top: 1.25rem; display: flex; gap: 2rem; font-size: 0.85rem; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 1rem;">
+        <div>Overall System Confidence: <b id="conf-overall" style="color: var(--accent-cyan);">0.00</b></div>
+        <div>Verification Ratio: <b id="conf-verif">0.00</b></div>
+        <div>Evidence Coverage: <b id="conf-coverage">0.00</b></div>
+        <div>Logic Score: <b id="conf-logic">1.00</b></div>
+      </div>
+    </div>
+
+    <!-- Workspace Grid: Evidence Graph & Claims -->
+    <div class="grid-workspace">
+
+      <!-- Evidence Graph Canvas -->
+      <div class="card">
+        <div class="card-title">
+          <span>🕸️ Dynamic Evidence Retrieval Graph (S4 + S4a)</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 400;">Interactive Nodes & Edges</span>
+        </div>
+        <div id="graph-container"></div>
+      </div>
+
+      <!-- Atomic Claims & Verdicts -->
+      <div class="card">
+        <div class="card-title">
+          <span>🔍 Atomic Claims & Fact Verdicts (S5, S6, S7)</span>
+          <span id="claim-count-badge" style="font-size: 0.8rem; color: var(--accent-cyan);">0 Claims</span>
+        </div>
+
+        <div id="claims-list">
+          <div style="color: var(--text-muted); text-align: center; padding: 3rem 0;">
+            Click "Verify Facts" to run multi-agent claim extraction and verification.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    let network = null;
+
+    document.addEventListener("DOMContentLoaded", () => {
+      loadSamples();
+
+      document.getElementById("btn-verify").addEventListener("click", runVerification);
+      document.getElementById("sample-select").addEventListener("change", (e) => {
+        if (e.target.value) {
+          document.getElementById("query-input").value = e.target.value;
+        }
+      });
+
+      // Auto run demo on startup
+      runVerification();
+    });
+
+    async function loadSamples() {
+      try {
+        const resp = await fetch("/api/samples");
+        const data = await resp.json();
+        const select = document.getElementById("sample-select");
+        data.samples.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.input_text;
+          opt.textContent = `[${s.dataset.toUpperCase()}] ${s.input_text.substring(0, 45)}...`;
+          select.appendChild(opt);
+        });
+      } catch (err) {
+        console.error("Error loading benchmark samples:", err);
+      }
+    }
+
+    async function runVerification() {
+      const question = document.getElementById("query-input").value.trim();
+      if (!question) return;
+
+      const heroCard = document.getElementById("hero-card");
+      const heroLoader = document.getElementById("hero-loader");
+      heroCard.style.display = "block";
+      heroLoader.style.display = "flex";
+
+      try {
+        const resp = await fetch("/api/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: question, use_llm: true })
+        });
+        const data = await resp.json();
+
+        // Render Hero Response
+        document.getElementById("hero-final-answer").innerHTML = renderCitations(data.final_answer, data.citations_used);
+        
+        const vBadge = document.getElementById("hero-verdict-badge");
+        vBadge.textContent = data.overall_verdict.replace(/_/g, ' ');
+        vBadge.className = `verdict-badge verdict-${data.overall_verdict}`;
+
+        document.getElementById("conf-overall").textContent = data.confidence.overall_confidence;
+        document.getElementById("conf-verif").textContent = data.confidence.verification_ratio;
+        document.getElementById("conf-coverage").textContent = data.confidence.evidence_coverage;
+        document.getElementById("conf-logic").textContent = data.logic_result.logic_score;
+
+        // Render vis-network Evidence Graph
+        renderGraph(data.vis_graph);
+
+        // Render Claims Breakdown
+        renderClaims(data.claim_results);
+
+      } catch (err) {
+        console.error("Verification failed:", err);
+        alert("Verification failed: " + err.message);
+      } finally {
+        heroLoader.style.display = "none";
+      }
+    }
+
+    function renderCitations(text, citations) {
+      let html = text;
+      citations.forEach(c => {
+        const reg = new RegExp(`\\[${c}\\]`, 'g');
+        html = html.replace(reg, `<span class="citation-pill">${c}</span>`);
+      });
+      return html;
+    }
+
+    function renderGraph(visGraph) {
+      const container = document.getElementById("graph-container");
+      const data = {
+        nodes: new vis.DataSet(visGraph.nodes),
+        edges: new vis.DataSet(visGraph.edges)
+      };
+
+      const options = {
+        nodes: {
+          borderWidth: 2,
+          shadow: true
+        },
+        edges: {
+          width: 2,
+          shadow: true,
+          smooth: { type: "continuous" }
+        },
+        physics: {
+          stabilization: false,
+          barnesHut: { gravitationalConstant: -3000, springLength: 95 }
+        }
+      };
+
+      if (network) network.destroy();
+      network = new vis.Network(container, data, options);
+    }
+
+    function renderClaims(claimResults) {
+      const container = document.getElementById("claims-list");
+      document.getElementById("claim-count-badge").textContent = `${claimResults.length} Claims`;
+      container.innerHTML = "";
+
+      claimResults.forEach(r => {
+        const div = document.createElement("div");
+        div.className = "claim-item";
+
+        const corrHtml = r.corrected_text ? 
+          `<div class="correction-box">✏️ <b>Corrected Fact:</b> "${r.corrected_text}"</div>` : "";
+
+        div.innerHTML = `
+          <div class="claim-header">
+            <span class="claim-id">${r.claim_id}</span>
+            <span class="verdict-badge verdict-${r.verdict}">${r.verdict.replace(/_/g, ' ')}</span>
+          </div>
+          <div class="claim-text">"${r.claim_text}"</div>
+          <div class="claim-meta">
+            <div>Confidence: <b>${r.confidence}</b></div>
+            <div>${r.explanation}</div>
+            ${corrHtml}
+          </div>
+        `;
+        container.appendChild(div);
+      });
+    }
+  </script>
+</body>
+</html>
