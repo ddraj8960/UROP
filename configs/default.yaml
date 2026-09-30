@@ -19,6 +19,37 @@ data:
       split: validation
       revision: null          # filled in after first live fetch
 
+# ---------------------------------------------------------------------------
+# LLM model-role routing (Issue 7 fix)
+# Map role names → OpenRouter model IDs.
+# generator and judge roles MUST use separate models so they can be
+# independently frozen after M2 lock-in.
+# ---------------------------------------------------------------------------
+llm:
+  roles:
+    generator: "meta-llama/llama-3.1-8b-instruct"       # Baseline 1 generator
+    judge_primary: "qwen/qwen3-235b-a22b"                # Frozen judge (primary)
+    judge_secondary: "mistralai/mistral-medium-3.1"      # Frozen judge (secondary)
+  max_tokens:
+    generator: 300
+    judge_primary: 256
+    judge_secondary: 256
+
+# ---------------------------------------------------------------------------
+# Runs directory
+# ---------------------------------------------------------------------------
+runs_dir: runs
+
+# ---------------------------------------------------------------------------
+# Retrieval Configuration (M3 / M4)
+# ---------------------------------------------------------------------------
+retrieval:
+  top_k: 5
+  sources:
+    - "local_wiki"
+    - "wiki_api"
+  index_dir: "data/indices"
+
 live:
   enabled: false                     # master switch; false = benchmark behaviour
   as_of_date: today                  # "today" or an ISO date; resolved once per run

@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import difflib
 from typing import Any
 
 from hmafact.claims.prompts import (
@@ -24,7 +25,11 @@ from hmafact.schemas.claims import (
     ExtractClaimsResponse,
     GenerateQueriesRequest,
     GenerateQueriesResponse,
+    LLMCallRecord,
 )
+
+class ServiceError(Exception):
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +53,7 @@ def extract_entities(text: str) -> list[str]:
             return list(dict.fromkeys(entities))  # preserve order & deduplicate
 
     # Regex fallback for capitalized words / proper nouns
-    caps = re.findall(r"\b[A-Z][a-z0-9]+(?:\s+[A-Z][a-z0-9]+)*\b", text)
+    caps = re.findall(r"\b([A-Z][\w]+(?:\s+[A-Z][\w]+)*)\b", text)
     filtered = [c.strip() for c in caps if c.lower() not in {"the", "a", "an", "this", "that", "there"}]
     return list(dict.fromkeys(filtered))
 
@@ -82,12 +87,46 @@ def _clean_json_array(raw_text: str) -> list[dict[str, Any]]:
     return results
 
 
-def extract_claims(request: ExtractClaimsRequest) -> ExtractClaimsResponse:
+class ClaimPostProcessor:
+    @staticmethod
+    def process(claims: list[Claim], max_claims: int = 8) -> list[Claim]:
+        processed = []
+        
+        for claim in claims:
+            # 1. Sanitize text
+            clean_text = claim.text.replace("\n", " ").strip()
+            clean_text = re.sub(r'[^\w\s\.,\'"\-?!]', '', clean_text)
+            
+            if len(clean_text) < 5:
+                continue
+                
+            # 2. Filter out pronoun-led claims (He, She, It, They)
+            first_word = clean_text.split()[0].lower()
+            if first_word in {"he", "she", "it", "they"}:
+                continue
+                
+            # 3. Merge exact duplicates
+            is_dup = False
+            for p in processed:
+                sim = difflib.SequenceMatcher(None, clean_text.lower(), p.text.lower()).ratio()
+                if sim > 0.92:
+                    is_dup = True
+                    break
+            if is_dup: continue
+            
+            claim.text = clean_text
+            processed.append(claim)
+            
+            # 4. Cap at max_claims
+            if len(processed) >= max_claims:
+                break
+                
+        return processed
+
+
+def extract_claims(request: ExtractClaimsRequest, model: str | None = None) -> ExtractClaimsResponse:
     """
     Extract atomic, decontextualized claims from a generated response.
-
-    In 'claim' mode (FEVER), the question itself is returned as a single Claim.
-    In 'qa' mode, LLM decomposes long_answer into atomic claims.
     """
     q_is_ts, q_scope = detect_time_sensitivity(request.question)
 
@@ -108,25 +147,38 @@ def extract_claims(request: ExtractClaimsRequest) -> ExtractClaimsResponse:
             query_id=request.query_id,
             claims=[single_claim],
             n_claims=1,
+            llm_call=None
         )
 
     # QA Mode: Call Agent LLM to extract claims
-    user_prompt = format_extraction_prompt(request.question, request.long_answer)
-    llm_res = generate_response(
-        prompt=user_prompt,
-        system_prompt=CLAIM_EXTRACTION_SYSTEM_PROMPT,
-        temperature=0.0,
-        max_tokens=500,
+    # Truncate extremely long answers to prevent runaway LLM usage
+    long_answer = request.long_answer[:10000]
+
+    user_prompt = format_extraction_prompt(request.question, long_answer)
+    try:
+        llm_res = generate_response(
+            prompt=user_prompt,
+            system_prompt=CLAIM_EXTRACTION_SYSTEM_PROMPT,
+            temperature=0.0,
+            max_tokens=1000,
+            model=model,
+        )
+    except Exception as e:
+        raise ServiceError(f"Extraction LLM failed: {str(e)}") from e
+
+    llm_call = LLMCallRecord(
+        model=llm_res["model"],
+        prompt_tokens=llm_res.get("prompt_tokens", 0),
+        completion_tokens=llm_res.get("completion_tokens", 0),
+        latency_sec=llm_res.get("latency_sec", 0.0)
     )
 
     parsed_items = _clean_json_array(llm_res["text"])
-    claims: list[Claim] = []
+    raw_claims: list[Claim] = []
 
+    # Temporary ID placeholder
     for idx, item in enumerate(parsed_items):
         claim_text = str(item.get("text", "")).strip()
-        if not claim_text or len(claim_text) < 5:
-            continue
-
         raw_type = str(item.get("claim_type", "other")).lower()
         valid_types = {"entity", "temporal", "numeric", "relational", "other"}
         ctype: ClaimType = raw_type if raw_type in valid_types else "other"  # type: ignore[assignment]
@@ -137,7 +189,7 @@ def extract_claims(request: ExtractClaimsRequest) -> ExtractClaimsResponse:
         t_scope = c_scope if c_scope != "unspecified" else q_scope
 
         claim = Claim(
-            claim_id=f"{request.query_id}:c{idx}",
+            claim_id="temp",
             text=claim_text,
             source_span=None,
             entities=entities,
@@ -145,11 +197,18 @@ def extract_claims(request: ExtractClaimsRequest) -> ExtractClaimsResponse:
             time_sensitive=is_ts,
             temporal_scope=t_scope,
         )
-        claims.append(claim)
+        raw_claims.append(claim)
 
-    # Fallback if LLM extraction returned 0 items
+    # Post-process (filter, merge, cap, sanitize)
+    claims = ClaimPostProcessor.process(raw_claims)
+
+    # Assign deterministic stable IDs based on final order
+    for idx, claim in enumerate(claims):
+        claim.claim_id = f"{request.query_id}:c{idx}"
+
+    # Fallback if extraction returned 0 items
     if not claims:
-        fallback_text = request.long_answer.splitlines()[0] if request.long_answer else request.question
+        fallback_text = long_answer.splitlines()[0] if long_answer else request.question
         c_is_ts, c_scope = detect_time_sensitivity(fallback_text)
         claims.append(
             Claim(
@@ -166,6 +225,7 @@ def extract_claims(request: ExtractClaimsRequest) -> ExtractClaimsResponse:
         query_id=request.query_id,
         claims=claims,
         n_claims=len(claims),
+        llm_call=llm_call
     )
 
 
@@ -175,57 +235,96 @@ def generate_claim_queries(
     as_of_year: int | str | None = None,
     live_enabled: bool = False,
     max_queries_ts: int = 3,
+    model: str | None = None,
 ) -> GenerateQueriesResponse:
     """
-    Generate search queries per claim for retrieval.
-
-    When live_enabled=False, output is 100% benchmark-invariant (same byte output).
-    When live_enabled=True and claim is time-sensitive:
-      Generates entity-neutral, question-anchored queries.
+    Generate exactly 2 distinct search queries per claim using an LLM batched call.
     """
     result: dict[str, list[str]] = {}
+    if not request.claims:
+        return GenerateQueriesResponse(queries=result, llm_call=None)
 
-    for claim in request.claims:
-        q1 = claim.text
-        # Entity-focused query
-        if claim.entities:
+    claims_text = [c.text for c in request.claims]
+    user_prompt = format_query_gen_prompt(claims_text)
+    
+    try:
+        llm_res = generate_response(
+            prompt=user_prompt,
+            system_prompt=QUERY_GEN_SYSTEM_PROMPT,
+            temperature=0.0,
+            max_tokens=800,
+            model=model,
+        )
+    except Exception as e:
+        raise ServiceError(f"Query Gen LLM failed: {str(e)}") from e
+
+    llm_call = LLMCallRecord(
+        model=llm_res["model"],
+        prompt_tokens=llm_res.get("prompt_tokens", 0),
+        completion_tokens=llm_res.get("completion_tokens", 0),
+        latency_sec=llm_res.get("latency_sec", 0.0)
+    )
+
+    # Parse response
+    cleaned = llm_res["text"].strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n?", "", cleaned)
+        cleaned = re.sub(r"\n?```$", "", cleaned).strip()
+
+    try:
+        gen_data = json.loads(cleaned)
+    except Exception:
+        gen_data = {}
+
+    for idx, claim in enumerate(request.claims):
+        queries = []
+        if isinstance(gen_data, dict) and str(idx) in gen_data:
+            q_list = gen_data[str(idx)]
+            if isinstance(q_list, list):
+                queries = [str(q).strip() for q in q_list if q and str(q).strip()]
+        
+        # Deduplicate exactly 2 queries
+        dedup_queries = list(dict.fromkeys(queries))
+        
+        # Fallbacks to guarantee exactly 2 distinct queries
+        if not dedup_queries:
+            q1 = claim.text
             q2 = f"{' '.join(claim.entities)} {claim.text.split()[-1] if claim.text.split() else ''}".strip()
-        else:
-            q2 = claim.text.replace("?", "").strip()
-
-        queries = [q1, q2]
-
-        # WP2: Question-anchored entity-neutral queries for time-sensitive claims
+            dedup_queries = [q1, q2]
+            
+        while len(dedup_queries) < 2:
+            # Just append a generic alternative to ensure distinctiveness
+            alt = f"{dedup_queries[0]} evidence"
+            if alt not in dedup_queries:
+                dedup_queries.append(alt)
+            else:
+                dedup_queries.append(f"{dedup_queries[0]} fact check")
+                
+        # Truncate to exactly 2 distinct queries
+        dedup_queries = dedup_queries[:2]
+        
+        # WP2: Time-sensitive handling
         if live_enabled and claim.time_sensitive:
             neutral_queries: list[str] = []
-
-            # Derive entity-neutral query from user's original question if provided
             if question and question.strip():
                 q_clean = question.replace("?", "").strip()
-                # Strip specific entity names mentioned in claim to make question entity-neutral
                 for ent in claim.entities:
                     q_clean = re.sub(re.escape(ent), "", q_clean, flags=re.IGNORECASE).strip()
                 q_clean = re.sub(r"\s+", " ", q_clean)
                 if len(q_clean) > 5:
                     neutral_queries.append(q_clean)
 
-            # Fallback neutral query: strip claim entities from claim text
-            neutral_claim_text = claim.text
-            for ent in claim.entities:
-                neutral_claim_text = re.sub(re.escape(ent), "", neutral_claim_text, flags=re.IGNORECASE).strip()
-            neutral_claim_text = re.sub(r"\s+", " ", neutral_claim_text)
-            if len(neutral_claim_text) > 5:
-                neutral_queries.append(neutral_claim_text)
-
-            # Add "as of <year>" query variant
             if as_of_year:
                 neutral_queries.append(f"{neutral_queries[0] if neutral_queries else question} as of {as_of_year}")
+                
+            dedup_queries = (neutral_queries + dedup_queries)[:max_queries_ts]
 
-            # Combine neutral queries first, capped at max_queries_ts
-            queries = (neutral_queries + queries)[:max_queries_ts]
+        # Sanitize queries to prevent Wikipedia API srsearch injection
+        sanitized = []
+        for q in dedup_queries:
+            s = re.sub(r'[^\w\s\.,\'"\-?!]', '', q)
+            sanitized.append(s.strip()[:300]) # Cap query length
+            
+        result[claim.claim_id] = sanitized
 
-        # Deduplicate while preserving order
-        dedup_queries = list(dict.fromkeys(q for q in queries if q and q.strip()))
-        result[claim.claim_id] = dedup_queries
-
-    return GenerateQueriesResponse(queries=result)
+    return GenerateQueriesResponse(queries=result, llm_call=llm_call)

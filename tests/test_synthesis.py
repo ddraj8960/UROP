@@ -101,3 +101,62 @@ def test_response_synthesizer_fallback():
     assert "Paris" in synth.final_answer
     assert "The Eiffel Tower is located in Paris, France" in synth.final_answer
     assert len(synth.corrections_made) == 1
+
+
+def test_response_synthesizer_rephrased_claim_fallback():
+    synthesizer = ResponseSynthesizer(llm_client=None)
+
+    question = "When was Eiffel Tower built?"
+    original_answer = "The Eiffel Tower was built in 1950."
+    claims = [Claim(claim_id="q1:c0", text="Eiffel Tower construction year was 1950")]
+
+    ver_resp = VerifyClaimsResponse(
+        query_id="q1",
+        overall_verdict="CONTRADICTED",
+        supported_count=0,
+        contradicted_count=1,
+        insufficient_count=0,
+        results=[
+            ClaimVerificationResult(
+                claim_id="q1:c0",
+                claim_text="Eiffel Tower construction year was 1950",
+                verdict="CONTRADICTED",
+                confidence=0.95,
+                citations=["Eiffel Tower History"],
+                corrected_text="The Eiffel Tower was constructed in 1889.",
+            )
+        ]
+    )
+
+    synth = synthesizer.synthesize(
+        query_id="q1",
+        question=question,
+        original_answer=original_answer,
+        claims=claims,
+        verification_response=ver_resp,
+        use_llm=False
+    )
+
+    assert synth.query_id == "q1"
+    assert "1889" in synth.final_answer
+    assert "1950" not in synth.final_answer
+    assert len(synth.corrections_made) == 1
+
+
+def test_confidence_estimator_clamped_logic():
+    claim_results = [
+        ClaimVerificationResult(
+            claim_id="q1:c0",
+            claim_text="Paris is capital of France",
+            verdict="SUPPORTED",
+            confidence=0.95,
+            citations=["Paris"],
+        ),
+    ]
+
+    # Test logic score out of bounds (<0.0)
+    invalid_logic = LogicValidationResult(query_id="q1", logic_score=-0.5, is_consistent=False)
+    metrics = estimate_confidence(claim_results, logic_result=invalid_logic)
+    assert metrics.logic_consistency == 0.0
+    assert 0.0 <= metrics.overall_confidence <= 1.0
+

@@ -92,7 +92,8 @@ def run_rag_eval(
     output_path = output_dir / f"rag_{dataset}_{split}_predictions.jsonl"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, "w", encoding="utf-8") as f:
+    # Append mode — never overwrites existing predictions (Issue 6 fix)
+    with open(output_path, "a", encoding="utf-8") as f:
         for r in results:
             f.write(json.dumps(r) + "\n")
 

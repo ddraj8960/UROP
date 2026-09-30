@@ -136,7 +136,28 @@ class ResponseSynthesizer:
         )
 
     @staticmethod
+    def _is_claim_match(claim_text: str, sentence: str) -> bool:
+        """Checks substring match or significant token overlap between claim and sentence."""
+        import re
+        c_lower = claim_text.lower().strip()
+        s_lower = sentence.lower().strip()
+
+        if c_lower in s_lower or s_lower in c_lower:
+            return True
+
+        c_tokens = set(w for w in re.findall(r"\w+", c_lower) if len(w) > 2)
+        s_tokens = set(w for w in re.findall(r"\w+", s_lower) if len(w) > 2)
+
+        if not c_tokens or not s_tokens:
+            return False
+
+        intersection = c_tokens.intersection(s_tokens)
+        overlap = len(intersection) / float(min(len(c_tokens), len(s_tokens)))
+        return overlap >= 0.4
+
+    @classmethod
     def _synthesize_fallback(
+        cls,
         original_answer: str,
         claim_results: list[ClaimVerificationResult],
         corrections: list[str],
@@ -144,20 +165,22 @@ class ResponseSynthesizer:
         live_enabled: bool = False,
         as_of_str: str = "",
     ) -> str:
-        """Constructs an algorithmic template synthesis answer."""
+        """Constructs an algorithmic template synthesis answer with robust matching."""
         sentences = [s.strip() for s in original_answer.split(".") if s.strip()]
 
         reconstructed: list[str] = []
+        applied_corrections: set[str] = set()
+
         for s in sentences:
             matched_correction = None
             is_unverified = False
             for r in claim_results:
-                if r.verdict in ("CONTRADICTED", "PARTIALLY_SUPPORTED") and r.corrected_text:
-                    if r.claim_text.lower() in s.lower() or s.lower() in r.claim_text.lower():
+                if cls._is_claim_match(r.claim_text, s):
+                    if r.verdict in ("CONTRADICTED", "PARTIALLY_SUPPORTED") and r.corrected_text:
                         matched_correction = r.corrected_text
+                        applied_corrections.add(r.corrected_text)
                         break
-                elif r.verdict == "INSUFFICIENT_EVIDENCE":
-                    if r.claim_text.lower() in s.lower() or s.lower() in r.claim_text.lower():
+                    elif r.verdict in ("INSUFFICIENT_EVIDENCE", "CONFLICTING_EVIDENCE"):
                         is_unverified = True
 
             if matched_correction:
@@ -170,7 +193,15 @@ class ResponseSynthesizer:
             else:
                 reconstructed.append(s)
 
-        res_text = ". ".join(reconstructed) + "."
+        # Append any unapplied corrections so no factual corrections are dropped
+        for corr in corrections:
+            if not any(corr.lower() in r_str.lower() for r_str in reconstructed):
+                reconstructed.append(corr)
+
+        res_text = ". ".join(reconstructed)
+        if not res_text.endswith("."):
+            res_text += "."
+
         if citations:
             cite_str = ", ".join(f"[{c}]" for c in citations[:3])
             res_text += f" {cite_str}"

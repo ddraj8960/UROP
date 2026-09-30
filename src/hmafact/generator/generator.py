@@ -12,6 +12,8 @@ from typing import Any
 from hmafact.generator.prompts import (
     CLAIM_SYSTEM_PROMPT,
     QA_SYSTEM_PROMPT,
+    RAG_QA_SYSTEM_PROMPT,
+    RAG_CLAIM_SYSTEM_PROMPT,
     format_claim_user_prompt,
     format_qa_user_prompt,
 )
@@ -66,11 +68,19 @@ def generate_answer(
         GenerateResponse object.
     """
     if request.mode == "claim":
-        sys_prompt = CLAIM_SYSTEM_PROMPT
-        user_prompt = format_claim_user_prompt(request.input_text)
+        if request.context_passages:
+            sys_prompt = RAG_CLAIM_SYSTEM_PROMPT
+            user_prompt = format_claim_user_prompt(request.input_text, request.context_passages)
+        else:
+            sys_prompt = CLAIM_SYSTEM_PROMPT
+            user_prompt = format_claim_user_prompt(request.input_text)
     else:
-        sys_prompt = QA_SYSTEM_PROMPT
-        user_prompt = format_qa_user_prompt(request.input_text, request.context_passages)
+        if request.context_passages:
+            sys_prompt = RAG_QA_SYSTEM_PROMPT
+            user_prompt = format_qa_user_prompt(request.input_text, request.context_passages)
+        else:
+            sys_prompt = QA_SYSTEM_PROMPT
+            user_prompt = format_qa_user_prompt(request.input_text)
 
     llm_res = generate_response(
         prompt=user_prompt,

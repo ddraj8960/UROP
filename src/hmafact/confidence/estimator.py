@@ -53,7 +53,11 @@ def estimate_confidence(
     consensus_score = round(sum(r.confidence for r in claim_results) / n_claims, 3)
 
     # 4. Logic consistency score
-    logic_consistency = logic_result.logic_score if logic_result else 1.0
+    logic_consistency = (
+        max(0.0, min(1.0, float(logic_result.logic_score)))
+        if logic_result is not None
+        else 1.0
+    )
 
     # 5. WP6 Time-sensitivity penalty check
     stale_ts_penalty = 0.0

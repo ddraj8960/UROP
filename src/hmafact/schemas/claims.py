@@ -29,10 +29,18 @@ class ExtractClaimsRequest(BaseModel):
     mode: Literal["qa", "claim"] = Field(default="qa", description="FEVER 'claim' mode passes through single claim")
 
 
+class LLMCallRecord(BaseModel):
+    model: str = Field(..., description="Model identifier used")
+    prompt_tokens: int = Field(default=0)
+    completion_tokens: int = Field(default=0)
+    latency_sec: float = Field(..., description="Execution latency in seconds")
+
+
 class ExtractClaimsResponse(BaseModel):
     query_id: str = Field(..., description="Matches request query_id")
     claims: list[Claim] = Field(default_factory=list, description="Extracted atomic claims")
     n_claims: int = Field(default=0, description="Total number of claims extracted")
+    llm_call: LLMCallRecord | None = Field(default=None, description="Metadata about the LLM extraction call")
 
 
 class GenerateQueriesRequest(BaseModel):
@@ -44,3 +52,4 @@ class GenerateQueriesResponse(BaseModel):
         default_factory=dict,
         description="Map from claim_id to list of search queries"
     )
+    llm_call: LLMCallRecord | None = Field(default=None, description="Metadata about the LLM query gen call")

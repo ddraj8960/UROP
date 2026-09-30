@@ -6,9 +6,13 @@ Supports Llama 3.1 8B Instruct, Gemini, Claude, and other models.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import os
+import shelve
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -19,6 +23,53 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# ---------------------------------------------------------------------------
+# Disk cache (Issue 5 fix)
+# ---------------------------------------------------------------------------
+# Cache is keyed on (model, prompt_hash, temperature, max_tokens).
+# Disable with OPENROUTER_CACHE=0 in .env or environment.
+_CACHE_ENABLED = os.getenv("OPENROUTER_CACHE", "1") == "1"
+_CACHE_DIR = Path(".cache/llm_cache")
+
+
+def _cache_key(model: str, prompt: str, system_prompt: str,
+               temperature: float, max_tokens: int) -> str:
+    """Stable cache key — SHA256 of all inputs that affect the response."""
+    raw = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "system_prompt": system_prompt,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }, sort_keys=True)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _cache_get(key: str) -> dict | None:
+    if not _CACHE_ENABLED:
+        return None
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with shelve.open(str(_CACHE_DIR / "responses")) as db:
+            entry = db.get(key)
+            if entry:
+                logger.debug("LLM cache HIT (key=%s...)", key[:12])
+            return entry
+    except Exception as exc:
+        logger.warning("LLM cache read failed: %s", exc)
+        return None
+
+
+def _cache_set(key: str, value: dict) -> None:
+    if not _CACHE_ENABLED:
+        return
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        with shelve.open(str(_CACHE_DIR / "responses")) as db:
+            db[key] = value
+    except Exception as exc:
+        logger.warning("LLM cache write failed: %s", exc)
 
 
 def generate_response(
@@ -50,6 +101,12 @@ def generate_response(
     if not model:
         model = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct")
 
+    # Disk-cache lookup (Issue 5 fix)
+    cache_key = _cache_key(model, prompt, system_prompt, temperature, max_tokens)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -74,7 +131,7 @@ def generate_response(
         try:
             resp = requests.post(OPENROUTER_API_URL, headers=headers, json=payload, timeout=30)
             if resp.status_code == 429:  # Rate limited
-                wait = attempt * 2
+                wait = 2 ** attempt  # exponential backoff (Issue 8 fix)
                 logger.warning("OpenRouter rate limited (429). Retrying in %ds...", wait)
                 time.sleep(wait)
                 continue
@@ -90,7 +147,7 @@ def generate_response(
             text = choices[0]["message"]["content"].strip()
             usage = data.get("usage", {})
 
-            return {
+            result = {
                 "text": text,
                 "model": data.get("model", model),
                 "prompt_tokens": usage.get("prompt_tokens", 0),
@@ -98,12 +155,20 @@ def generate_response(
                 "latency_sec": latency,
             }
 
+            # Store in disk cache before returning (Issue 5 fix)
+            _cache_set(cache_key, result)
+            return result
+
         except Exception as e:
             last_err = e
             if attempt < retries:
-                time.sleep(attempt * 1.5)
+                wait = 2 ** attempt  # exponential backoff (Issue 8 fix)
+                logger.warning("Attempt %d/%d failed (%s). Retrying in %ds...",
+                               attempt, retries, e, wait)
+                time.sleep(wait)
 
     raise RuntimeError(f"OpenRouter API call failed after {retries} retries: {last_err}")
+
 
 
 class OpenRouterClient:

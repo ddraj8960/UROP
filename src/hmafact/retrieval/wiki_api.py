@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from hmafact.schemas.evidence import EvidencePassage
+from hmafact.schemas.evidence import EvidencePassage, SourceName
 
 logger = logging.getLogger(__name__)
 
@@ -37,19 +38,11 @@ def search_wikipedia_api(
 ) -> list[EvidencePassage]:
     """
     Search Wikipedia via MediaWiki API and return top-k EvidencePassages.
-
-    Args:
-        query: Search query text.
-        k: Number of passages to return.
-        cache_dir: Directory to cache raw Wikipedia API responses.
-        ttl_hours: Cache time-to-live in hours (None = permanent cache).
-        refresh: Force cache bypass if True.
-
-    Returns:
-        List of EvidencePassage objects with retrieved_at and doc_date populated.
     """
+    k = min(max(1, k), 50)
     cache_dir.mkdir(parents=True, exist_ok=True)
-    query_hash = hashlib.md5(f"wiki_search:{query}:{k}".encode("utf-8")).hexdigest()
+    # Using SHA-256 for better security than MD5
+    query_hash = hashlib.sha256(f"wiki_search:{query}:{k}".encode("utf-8")).hexdigest()
     cache_file = cache_dir / f"{query_hash}.json"
 
     # Check cache TTL if refresh is False
@@ -119,13 +112,51 @@ def search_wikipedia_api(
             )
             passages.append(passage)
 
-        # Cache results
-        cache_file.write_text(
+        # Atomic cache write
+        temp_file = cache_dir / f"{query_hash}.tmp"
+        temp_file.write_text(
             json.dumps([p.model_dump(mode="json") for p in passages], indent=2),
             encoding="utf-8"
         )
+        os.replace(temp_file, cache_file)
+
         return passages
 
     except Exception as e:
         logger.error("Wikipedia API search failed for query '%s': %s", query, e)
         return []
+
+
+class WikiApiSource:
+    """
+    Live MediaWiki search + extracts, chunked identically to the local corpus.
+    Every response is cached to disk permanently, so runs stay reproducible.
+    """
+    name: SourceName = "wiki_api"
+
+    def __init__(self, cfg: Any = None, cache_dir: Path = CACHE_DIR) -> None:
+        self.cache_dir = cache_dir
+        # ttl_hours None means permanent cache as required by M3 for reproducibility
+        self.ttl_hours = None if cfg is None else getattr(cfg, "ttl_hours", None)
+
+    def search(self, query: str, k: int = 5) -> list[EvidencePassage]:
+        return search_wikipedia_api(
+            query=query, 
+            k=k, 
+            cache_dir=self.cache_dir, 
+            ttl_hours=self.ttl_hours,
+            refresh=False
+        )
+
+    def health(self) -> dict:
+        try:
+            size = sum(f.stat().st_size for f in self.cache_dir.glob("*.json") if f.is_file())
+            count = len(list(self.cache_dir.glob("*.json")))
+        except Exception:
+            size, count = 0, 0
+        return {
+            "source": self.name,
+            "status": "ok",
+            "cache_items": count,
+            "cache_size_bytes": size,
+        }

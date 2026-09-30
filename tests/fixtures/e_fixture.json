@@ -1,0 +1,322 @@
+{
+  "q1": {
+    "question": "Question 1?",
+    "long_answer": "Answer 1 is true. It is a fact.",
+    "claims": [
+      "Answer 1 is true.",
+      "It is a fact."
+    ]
+  },
+  "q2": {
+    "question": "Question 2?",
+    "long_answer": "Answer 2 is true. It is a fact.",
+    "claims": [
+      "Answer 2 is true.",
+      "It is a fact."
+    ]
+  },
+  "q3": {
+    "question": "Question 3?",
+    "long_answer": "Answer 3 is true. It is a fact.",
+    "claims": [
+      "Answer 3 is true.",
+      "It is a fact."
+    ]
+  },
+  "q4": {
+    "question": "Question 4?",
+    "long_answer": "Answer 4 is true. It is a fact.",
+    "claims": [
+      "Answer 4 is true.",
+      "It is a fact."
+    ]
+  },
+  "q5": {
+    "question": "Question 5?",
+    "long_answer": "Answer 5 is true. It is a fact.",
+    "claims": [
+      "Answer 5 is true.",
+      "It is a fact."
+    ]
+  },
+  "q6": {
+    "question": "Question 6?",
+    "long_answer": "Answer 6 is true. It is a fact.",
+    "claims": [
+      "Answer 6 is true.",
+      "It is a fact."
+    ]
+  },
+  "q7": {
+    "question": "Question 7?",
+    "long_answer": "Answer 7 is true. It is a fact.",
+    "claims": [
+      "Answer 7 is true.",
+      "It is a fact."
+    ]
+  },
+  "q8": {
+    "question": "Question 8?",
+    "long_answer": "Answer 8 is true. It is a fact.",
+    "claims": [
+      "Answer 8 is true.",
+      "It is a fact."
+    ]
+  },
+  "q9": {
+    "question": "Question 9?",
+    "long_answer": "Answer 9 is true. It is a fact.",
+    "claims": [
+      "Answer 9 is true.",
+      "It is a fact."
+    ]
+  },
+  "q10": {
+    "question": "Question 10?",
+    "long_answer": "Answer 10 is true. It is a fact.",
+    "claims": [
+      "Answer 10 is true.",
+      "It is a fact."
+    ]
+  },
+  "q11": {
+    "question": "Question 11?",
+    "long_answer": "Answer 11 is true. It is a fact.",
+    "claims": [
+      "Answer 11 is true.",
+      "It is a fact."
+    ]
+  },
+  "q12": {
+    "question": "Question 12?",
+    "long_answer": "Answer 12 is true. It is a fact.",
+    "claims": [
+      "Answer 12 is true.",
+      "It is a fact."
+    ]
+  },
+  "q13": {
+    "question": "Question 13?",
+    "long_answer": "Answer 13 is true. It is a fact.",
+    "claims": [
+      "Answer 13 is true.",
+      "It is a fact."
+    ]
+  },
+  "q14": {
+    "question": "Question 14?",
+    "long_answer": "Answer 14 is true. It is a fact.",
+    "claims": [
+      "Answer 14 is true.",
+      "It is a fact."
+    ]
+  },
+  "q15": {
+    "question": "Question 15?",
+    "long_answer": "Answer 15 is true. It is a fact.",
+    "claims": [
+      "Answer 15 is true.",
+      "It is a fact."
+    ]
+  },
+  "q16": {
+    "question": "Question 16?",
+    "long_answer": "Answer 16 is true. It is a fact.",
+    "claims": [
+      "Answer 16 is true.",
+      "It is a fact."
+    ]
+  },
+  "q17": {
+    "question": "Question 17?",
+    "long_answer": "Answer 17 is true. It is a fact.",
+    "claims": [
+      "Answer 17 is true.",
+      "It is a fact."
+    ]
+  },
+  "q18": {
+    "question": "Question 18?",
+    "long_answer": "Answer 18 is true. It is a fact.",
+    "claims": [
+      "Answer 18 is true.",
+      "It is a fact."
+    ]
+  },
+  "q19": {
+    "question": "Question 19?",
+    "long_answer": "Answer 19 is true. It is a fact.",
+    "claims": [
+      "Answer 19 is true.",
+      "It is a fact."
+    ]
+  },
+  "q20": {
+    "question": "Question 20?",
+    "long_answer": "Answer 20 is true. It is a fact.",
+    "claims": [
+      "Answer 20 is true.",
+      "It is a fact."
+    ]
+  },
+  "q21": {
+    "question": "Question 21?",
+    "long_answer": "Answer 21 is true. It is a fact.",
+    "claims": [
+      "Answer 21 is true.",
+      "It is a fact."
+    ]
+  },
+  "q22": {
+    "question": "Question 22?",
+    "long_answer": "Answer 22 is true. It is a fact.",
+    "claims": [
+      "Answer 22 is true.",
+      "It is a fact."
+    ]
+  },
+  "q23": {
+    "question": "Question 23?",
+    "long_answer": "Answer 23 is true. It is a fact.",
+    "claims": [
+      "Answer 23 is true.",
+      "It is a fact."
+    ]
+  },
+  "q24": {
+    "question": "Question 24?",
+    "long_answer": "Answer 24 is true. It is a fact.",
+    "claims": [
+      "Answer 24 is true.",
+      "It is a fact."
+    ]
+  },
+  "q25": {
+    "question": "Question 25?",
+    "long_answer": "Answer 25 is true. It is a fact.",
+    "claims": [
+      "Answer 25 is true.",
+      "It is a fact."
+    ]
+  },
+  "q26": {
+    "question": "Question 26?",
+    "long_answer": "Answer 26 is true. It is a fact.",
+    "claims": [
+      "Answer 26 is true.",
+      "It is a fact."
+    ]
+  },
+  "q27": {
+    "question": "Question 27?",
+    "long_answer": "Answer 27 is true. It is a fact.",
+    "claims": [
+      "Answer 27 is true.",
+      "It is a fact."
+    ]
+  },
+  "q28": {
+    "question": "Question 28?",
+    "long_answer": "Answer 28 is true. It is a fact.",
+    "claims": [
+      "Answer 28 is true.",
+      "It is a fact."
+    ]
+  },
+  "q29": {
+    "question": "Question 29?",
+    "long_answer": "Answer 29 is true. It is a fact.",
+    "claims": [
+      "Answer 29 is true.",
+      "It is a fact."
+    ]
+  },
+  "q30": {
+    "question": "Question 30?",
+    "long_answer": "Answer 30 is true. It is a fact.",
+    "claims": [
+      "Answer 30 is true.",
+      "It is a fact."
+    ]
+  },
+  "q31": {
+    "question": "Question 31?",
+    "long_answer": "Answer 31 is true. It is a fact.",
+    "claims": [
+      "Answer 31 is true.",
+      "It is a fact."
+    ]
+  },
+  "q32": {
+    "question": "Question 32?",
+    "long_answer": "Answer 32 is true. It is a fact.",
+    "claims": [
+      "Answer 32 is true.",
+      "It is a fact."
+    ]
+  },
+  "q33": {
+    "question": "Question 33?",
+    "long_answer": "Answer 33 is true. It is a fact.",
+    "claims": [
+      "Answer 33 is true.",
+      "It is a fact."
+    ]
+  },
+  "q34": {
+    "question": "Question 34?",
+    "long_answer": "Answer 34 is true. It is a fact.",
+    "claims": [
+      "Answer 34 is true.",
+      "It is a fact."
+    ]
+  },
+  "q35": {
+    "question": "Question 35?",
+    "long_answer": "Answer 35 is true. It is a fact.",
+    "claims": [
+      "Answer 35 is true.",
+      "It is a fact."
+    ]
+  },
+  "q36": {
+    "question": "Question 36?",
+    "long_answer": "Answer 36 is true. It is a fact.",
+    "claims": [
+      "Answer 36 is true.",
+      "It is a fact."
+    ]
+  },
+  "q37": {
+    "question": "Question 37?",
+    "long_answer": "Answer 37 is true. It is a fact.",
+    "claims": [
+      "Answer 37 is true.",
+      "It is a fact."
+    ]
+  },
+  "q38": {
+    "question": "Question 38?",
+    "long_answer": "Answer 38 is true. It is a fact.",
+    "claims": [
+      "Answer 38 is true.",
+      "It is a fact."
+    ]
+  },
+  "q39": {
+    "question": "Question 39?",
+    "long_answer": "Answer 39 is true. It is a fact.",
+    "claims": [
+      "Answer 39 is true.",
+      "It is a fact."
+    ]
+  },
+  "q40": {
+    "question": "Question 40?",
+    "long_answer": "Answer 40 is true. It is a fact.",
+    "claims": [
+      "Answer 40 is true.",
+      "It is a fact."
+    ]
+  }
+}

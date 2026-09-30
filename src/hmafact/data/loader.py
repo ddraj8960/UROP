@@ -25,6 +25,11 @@ class TestSplitLockedError(RuntimeError):
     __test__ = False
 
 
+class IntegrityError(RuntimeError):
+    """Raised when a split file's sha256 does not match the manifest."""
+    pass
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     h.update(path.read_bytes())
@@ -32,7 +37,7 @@ def _sha256_file(path: Path) -> str:
 
 
 def _verify_manifest(path: Path, samples_dir: Path) -> None:
-    """Warn loudly if file sha256 doesn't match the manifest."""
+    """Raise IntegrityError if file sha256 doesn't match the manifest."""
     manifest_path = samples_dir / "manifest.json"
     if not manifest_path.exists():
         logger.warning("manifest.json not found — skipping sha256 verification.")
@@ -45,10 +50,14 @@ def _verify_manifest(path: Path, samples_dir: Path) -> None:
         return
     actual_sha = _sha256_file(path)
     if actual_sha != expected_sha:
-        logger.warning(
-            "INTEGRITY WARNING: %s sha256 mismatch!\n  expected: %s\n  actual:   %s",
-            file_key, expected_sha, actual_sha,
+        raise IntegrityError(
+            f"INTEGRITY FAILURE: {file_key} sha256 mismatch!\n"
+            f"  expected: {expected_sha}\n"
+            f"  actual:   {actual_sha}\n"
+            "The file may have been corrupted or modified after the split was built.\n"
+            "Re-run `uv run python scripts/build_benchmark_splits.py` to regenerate."
         )
+    logger.debug("Integrity OK: %s (sha256: %s...)", file_key, actual_sha[:16])
 
 
 def load_samples(

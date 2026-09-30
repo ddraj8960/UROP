@@ -2,39 +2,12 @@
 Prompts for Service S5 (Claim Extraction Agent).
 """
 from __future__ import annotations
+from pathlib import Path
 
-CLAIM_EXTRACTION_SYSTEM_PROMPT = """You are a precise linguistic analysis agent.
-Your task is to decompose a paragraph into atomic, factual claims.
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
 
-RULES:
-1. Each claim MUST be atomic (expresses exactly ONE fact).
-2. Each claim MUST be decontextualized (replace pronouns like "he", "she", "it", "they" with explicit entity names from the context).
-3. Ignore subjective opinions or non-verifiable filler.
-4. Output a JSON list of objects, where each object has:
-   - "text": The standalone atomic claim string.
-   - "claim_type": One of ["entity", "temporal", "numeric", "relational", "other"]
-
-Example Output:
-[
-  {"text": "The Boston Patriots were founded in 1960.", "claim_type": "temporal"},
-  {"text": "The Boston Patriots competed in the American Football League.", "claim_type": "relational"}
-]
-"""
-
-QUERY_GEN_SYSTEM_PROMPT = """You are a search query formulation agent.
-For each atomic claim provided, generate 2 concise search queries for retrieving Wikipedia evidence:
-1. An entity-focused query (e.g. "Boston Patriots 1960 founding")
-2. A keyword paraphrase query (e.g. "American Football League Boston team")
-
-Output JSON format:
-{
-  "queries": [
-    "query 1",
-    "query 2"
-  ]
-}
-"""
-
+CLAIM_EXTRACTION_SYSTEM_PROMPT = (_PROMPTS_DIR / "extract_claims.txt").read_text(encoding="utf-8")
+QUERY_GEN_SYSTEM_PROMPT = (_PROMPTS_DIR / "generate_queries.txt").read_text(encoding="utf-8")
 
 def format_extraction_prompt(question: str, long_answer: str) -> str:
     return (
@@ -43,6 +16,12 @@ def format_extraction_prompt(question: str, long_answer: str) -> str:
         f"Decompose the Generated Answer into atomic claims in JSON format."
     )
 
-
-def format_query_gen_prompt(claim_text: str) -> str:
-    return f"Claim: {claim_text}\n\nGenerate 2 search queries in JSON format."
+def format_query_gen_prompt(claims: list[str]) -> str:
+    claim_lines = "\n".join(f"[{i}] {claim}" for i, claim in enumerate(claims))
+    return (
+        f"Generate exactly 2 distinct search queries for each of the following claims.\n\n"
+        f"Claims:\n{claim_lines}\n\n"
+        f"Output JSON format:\n{{\n"
+        f"  \"0\": [\"query 1\", \"query 2\"],\n"
+        f"  \"1\": [\"query 1\", \"query 2\"]\n}}"
+    )

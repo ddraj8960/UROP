@@ -8,14 +8,49 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Sequence
+from typing import Sequence, Any
 
-from hmafact.schemas.evidence import EvidencePassage, SourceName
-from hmafact.retrieval.wiki_api import search_wikipedia_api
+from hmafact.schemas.evidence import EvidencePassage, SourceName, SearchRequest, SearchResponse
+from hmafact.retrieval.wiki_api import WikiApiSource
+from hmafact.retrieval.local import LocalHybridRetriever
+from hmafact.retrieval.protocol import EvidenceSource
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RRF_K = 60
+
+# SOURCES Registry
+SOURCES: dict[SourceName, type[EvidenceSource]] = {
+    "local_wiki": LocalHybridRetriever,
+    "wiki_api": WikiApiSource,
+}
+
+
+def fuse_rankings(
+    dense: list[tuple[str, float]], 
+    sparse: list[tuple[str, float]],
+    k_rrf: int = DEFAULT_RRF_K
+) -> list[tuple[str, float]]:
+    """
+    Reciprocal rank fusion: score(d) = sum(1 / (k_rrf + rank)).
+    Deterministic; ties broken by passage_id so results never depend on dict ordering.
+    """
+    scores: dict[str, float] = {}
+    
+    for rank, (pid, _) in enumerate(dense, 1):
+        scores[pid] = scores.get(pid, 0.0) + (1.0 / (k_rrf + rank))
+        
+    for rank, (pid, _) in enumerate(sparse, 1):
+        scores[pid] = scores.get(pid, 0.0) + (1.0 / (k_rrf + rank))
+        
+    if not scores:
+        return []
+        
+    # Sort deterministically: highest score first, then fallback to passage_id alphabetically
+    sorted_pids = sorted(scores.keys(), key=lambda pid: (-scores[pid], pid))
+    
+    max_score = scores[sorted_pids[0]] if sorted_pids else 1.0
+    return [(pid, scores[pid] / max_score if max_score > 0 else 0.0) for pid in sorted_pids]
 
 
 def reciprocal_rank_fusion(
@@ -26,15 +61,6 @@ def reciprocal_rank_fusion(
 ) -> list[EvidencePassage]:
     """
     Combine multiple ranked lists of EvidencePassages into a single fused ranking via RRF.
-
-    Args:
-        ranked_lists: List of ranked EvidencePassage lists (e.g., [bm25_results, vector_results]).
-        rrf_k: Smoothing constant for RRF formula (default 60).
-        top_k: Maximum number of passages to return.
-        min_live_passages: Reserved slots for live sources (wiki_api/wikidata) in top_k.
-
-    Returns:
-        Unified list of EvidencePassage objects with updated RRF scores and ranks.
     """
     scores: dict[str, float] = {}
     passage_map: dict[str, EvidencePassage] = {}
@@ -42,6 +68,9 @@ def reciprocal_rank_fusion(
     for ranked_list in ranked_lists:
         for rank, passage in enumerate(ranked_list, 1):
             pid = passage.passage_id
+            if not pid:
+                # Fallback id if empty to prevent collision
+                pid = f"unknown_{passage.source}_{hash(passage.text)}"
             if pid not in passage_map:
                 passage_map[pid] = passage
             # Add reciprocal rank score
@@ -51,8 +80,8 @@ def reciprocal_rank_fusion(
     if not scores:
         return []
 
-    # Sort passage IDs by descending RRF score
-    sorted_pids = sorted(scores.keys(), key=lambda pid: scores[pid], reverse=True)
+    # Sort deterministically: by score descending, then pid ascending
+    sorted_pids = sorted(scores.keys(), key=lambda pid: (-scores[pid], pid))
 
     # Reserve min_live_passages slots for live sources if requested
     if min_live_passages > 0:
@@ -61,9 +90,9 @@ def reciprocal_rank_fusion(
 
         selected_live = live_pids[:min_live_passages]
         remaining_slots = max(0, top_k - len(selected_live))
-        selected_other = [pid for pid in sorted_pids if pid not in selected_live][:remaining_slots]
+        selected_other = non_live_pids[:remaining_slots]
 
-        final_pids = sorted(selected_live + selected_other, key=lambda pid: scores[pid], reverse=True)[:top_k]
+        final_pids = sorted(selected_live + selected_other, key=lambda pid: (-scores[pid], pid))[:top_k]
     else:
         final_pids = sorted_pids[:top_k]
 
@@ -86,6 +115,69 @@ def reciprocal_rank_fusion(
     return fused
 
 
+def search(request: SearchRequest, cfg: Any = None) -> SearchResponse:
+    """
+    Batch retrieval across sources for many claims at once.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Instantiate retrievers
+    retrievers = []
+    for source_name in request.sources:
+        if source_name in SOURCES:
+            SourceClass = SOURCES[source_name]
+            if source_name == "local_wiki":
+                index_dir = getattr(cfg.retrieval, "index_dir", "data/indices") if cfg and hasattr(cfg, "retrieval") else "data/indices"
+                try:
+                    retrievers.append(SourceClass(index_dir=index_dir, cfg=cfg.retrieval if cfg else None))
+                except Exception as e:
+                    logger.warning(f"Failed to initialize local_wiki: {e}")
+            else:
+                retrievers.append(SourceClass(cfg=cfg.retrieval if cfg else None))
+        else:
+            logger.warning(f"Source {source_name} not found in SOURCES registry.")
+
+    results: dict[str, EvidencePassage] = {}
+
+    queries_map = {}
+    if isinstance(request.queries, dict):
+        queries_map = request.queries
+    else:
+        # If it's a list, treat the query string as the claim_id itself
+        for q in request.queries:
+            queries_map[q] = [q]
+
+    for claim_id, query_list in queries_map.items():
+        for query in query_list:
+            all_rankings = []
+            for retriever in retrievers:
+                try:
+                    passages = retriever.search(query, k=request.k * 2)
+                    if passages:
+                        all_rankings.append(passages)
+                except Exception as e:
+                    logger.error(f"Error searching {retriever.name} for query '{query}': {e}")
+            
+            if not all_rankings:
+                continue
+                
+            fused = reciprocal_rank_fusion(all_rankings, top_k=request.k)
+            for passage in fused:
+                pid = passage.passage_id
+                if pid not in results:
+                    passage.meta["retrieved_for"] = [claim_id]
+                    passage.search_query = query
+                    results[pid] = passage
+                else:
+                    if claim_id not in results[pid].meta.get("retrieved_for", []):
+                        if "retrieved_for" not in results[pid].meta:
+                            results[pid].meta["retrieved_for"] = []
+                        results[pid].meta["retrieved_for"].append(claim_id)
+                        
+    return SearchResponse(passages=results)
+
+
 def search_evidence(
     query: str,
     sources: list[SourceName] | None = None,
@@ -96,94 +188,17 @@ def search_evidence(
     refresh: bool = False,
     local_snapshot_date: str = "2018-06-01",
 ) -> list[EvidencePassage]:
-    """
-    Retrieve top-k evidence passages for a query across configured sources.
-
-    Args:
-        query: Query string.
-        sources: List of sources to query (defaults to ["wiki_api"]).
-        k: Number of passages to return.
-        live_enabled: Whether live retrieval features (slot reservation, TTL) are enabled.
-        min_live_passages: Minimum live passages reserved in top-k when live_enabled.
-        ttl_hours: API response cache TTL in hours.
-        refresh: Force cache bypass if True.
-        local_snapshot_date: ISO date string for local_wiki snapshot.
-
-    Returns:
-        List of EvidencePassage objects with retrieved_at and doc_date populated.
-    """
+    """Legacy interface for single query, redirects to search() batch handler."""
     if not sources:
         sources = ["wiki_api"]
 
     if live_enabled and "wiki_api" not in sources:
         sources.append("wiki_api")
 
-    all_rankings: list[list[EvidencePassage]] = []
-    now_utc = datetime.now(timezone.utc)
-
-    if "wiki_api" in sources:
-        wiki_passages = search_wikipedia_api(
-            query=query,
-            k=k * 2,
-            ttl_hours=ttl_hours if live_enabled else None,
-            refresh=refresh,
-        )
-        if wiki_passages:
-            all_rankings.append(wiki_passages)
-
-    if not all_rankings:
-        return []
-
-    # Apply timestamps to local_wiki passages if present
-    try:
-        snapshot_dt = datetime.fromisoformat(f"{local_snapshot_date}T00:00:00+00:00")
-    except Exception:
-        snapshot_dt = datetime(2018, 6, 1, tzinfo=timezone.utc)
-
-    for r_list in all_rankings:
-        for idx, p in enumerate(r_list):
-            updates = {}
-            if p.retrieved_at is None:
-                updates["retrieved_at"] = now_utc
-            if p.doc_date is None:
-                updates["doc_date"] = snapshot_dt if p.source == "local_wiki" else now_utc
-            if updates:
-                r_list[idx] = p.model_copy(update=updates)
-
-    # If single source, return top k
-    if len(all_rankings) == 1:
-        return all_rankings[0][:k]
-
-    # Multiple sources: fuse via RRF
-    return reciprocal_rank_fusion(
-        all_rankings,
-        top_k=k,
-        min_live_passages=min_live_passages if live_enabled else 0,
-    )
-
-
-class HybridRetriever:
-    """Retriever class wrapper."""
-
-    def __init__(
-        self,
-        sources: list[SourceName] | None = None,
-        live_enabled: bool = False,
-        min_live_passages: int = 3,
-        ttl_hours: float = 24.0,
-    ):
-        self.sources = sources or ["wiki_api"]
-        self.live_enabled = live_enabled
-        self.min_live_passages = min_live_passages
-        self.ttl_hours = ttl_hours
-
-    def search(self, query: str, k: int = 5, refresh: bool = False) -> list[EvidencePassage]:
-        return search_evidence(
-            query=query,
-            sources=self.sources,
-            k=k,
-            live_enabled=self.live_enabled,
-            min_live_passages=self.min_live_passages,
-            ttl_hours=self.ttl_hours,
-            refresh=refresh,
-        )
+    req = SearchRequest(queries=[query], sources=sources, k=k)
+    resp = search(req)
+    
+    # Extract results for this query and sort by score
+    passages = list(resp.passages.values())
+    passages.sort(key=lambda p: (-p.retrieval_score, p.passage_id))
+    return passages[:k]

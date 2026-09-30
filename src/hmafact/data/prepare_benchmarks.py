@@ -49,8 +49,26 @@ def fetch_truthfulqa(revision: str | None = None) -> tuple[list[BenchmarkSample]
         kwargs["revision"] = revision
 
     ds = load_dataset(**kwargs)
-    # datasets 5.x: info.version may not exist; use dataset_info commit hash or fallback
-    resolved_revision: str = getattr(ds.info, "version", None) or getattr(ds.info, "dataset_name", "unknown")
+
+    # Resolve to the actual HuggingFace commit SHA for source-pinning.
+    # huggingface_hub (installed alongside `datasets`) exposes the git commit
+    # of the dataset revision that was fetched, which is what we store in the
+    # manifest. This is a real SHA, not a version string like "0.0.0".
+    resolved_revision: str = "unknown"
+    try:
+        from huggingface_hub import dataset_info as hf_dataset_info  # type: ignore[import]
+        info = hf_dataset_info("truthfulqa/truthful_qa", revision=revision)
+        resolved_revision = info.sha or "unknown"
+    except Exception:
+        # Fallback: dataset card metadata or empty
+        try:
+            resolved_revision = (
+                getattr(ds.info, "download_checksums", None) and "checksum-present"
+                or getattr(ds.info, "dataset_name", None)
+                or "unknown"
+            )
+        except Exception:
+            resolved_revision = "unknown"
 
     samples: list[BenchmarkSample] = []
     for row in ds:
@@ -253,73 +271,3 @@ def fetch_hotpotqa(cache_path: Path | None = None) -> tuple[list[BenchmarkSample
 
     logger.info("HotpotQA: %d rows parsed.", len(samples))
     return samples, revision_sha
-
-    """
-    Download HotpotQA distractor dev set directly from the official CMU source.
-    Option B — direct download, no HuggingFace datasets library (avoids hanging).
-
-    Returns (samples, sha256_of_downloaded_file).
-
-    Args:
-        cache_path: If provided and file exists, skip the download.
-    """
-    if cache_path and cache_path.exists():
-        logger.info("HotpotQA: using cached file at %s", cache_path)
-        raw_bytes = cache_path.read_bytes()
-    else:
-        logger.info("HotpotQA: downloading from %s", HOTPOTQA_DEV_URL)
-        resp = requests.get(HOTPOTQA_DEV_URL, timeout=300, stream=True)
-        resp.raise_for_status()
-
-        chunks = []
-        downloaded = 0
-        for chunk in resp.iter_content(chunk_size=1024 * 1024):  # 1MB chunks
-            chunks.append(chunk)
-            downloaded += len(chunk)
-            if downloaded % (10 * 1024 * 1024) == 0:  # log every 10MB
-                logger.info("HotpotQA: downloaded %.1f MB...", downloaded / 1024 / 1024)
-        raw_bytes = b"".join(chunks)
-        logger.info("HotpotQA: download complete (%.1f MB)", len(raw_bytes) / 1024 / 1024)
-
-        if cache_path:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_bytes(raw_bytes)
-            logger.info("HotpotQA: saved to %s", cache_path)
-
-    revision_sha = hashlib.sha256(raw_bytes).hexdigest()
-    data: list[dict] = json.loads(raw_bytes.decode("utf-8"))
-
-    samples: list[BenchmarkSample] = []
-    for row in data:
-        assert row["level"] == "hard", (
-            f"HotpotQA distractor dev should be all 'hard'; got '{row['level']}' for id {row['_id']}"
-        )
-
-        # Gold supporting facts: list of (title, sent_id)
-        gold_ev = [(fact[0], fact[1]) for fact in row["supporting_facts"]]
-
-        # Context paragraphs: list of {title, sentences} — 10 items per question (M3 requirement)
-        context = [
-            {"title": para[0], "sentences": list(para[1])}
-            for para in row["context"]
-        ]
-
-        samples.append(
-            BenchmarkSample(
-                sample_id=f"hotpotqa:{row['_id']}",
-                dataset="hotpotqa",
-                split="dev",  # placeholder; overwritten by the splitter
-                input_text=row["question"],
-                gold_answer=row["answer"],
-                gold_evidence=gold_ev,
-                meta={
-                    "type": row["type"],    # "bridge" or "comparison"
-                    "level": row["level"],  # always "hard"
-                    "context": context,     # 10 paragraphs for M3 corpus construction
-                },
-            )
-        )
-
-    logger.info("HotpotQA: %d rows parsed.", len(samples))
-    return samples, revision_sha
-

@@ -57,6 +57,10 @@ def test_claim_extraction(dataset: str = "truthfulqa", split: str = "dev", limit
 
         # 3. Generate search queries (M5)
         queries_res = generate_claim_queries(GenerateQueriesRequest(claims=ext_res.claims))
+        
+        # Per-item rate limit guard
+        import time
+        time.sleep(1.0)
 
         print(f"[{i}/{len(samples)}] Question / Claim: {s.input_text}")
         print(f"Generated Answer: {gen_res.long_answer}")

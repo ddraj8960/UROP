@@ -15,7 +15,7 @@ from pathlib import Path
 # Add src/ to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from hmafact.baselines.rag import run_rag_baseline
+
 from hmafact.data.loader import load_samples
 from hmafact.generator.generator import generate_answer
 from hmafact.schemas.generator import GenerateRequest
@@ -43,7 +43,21 @@ def compare_baselines(dataset: str = "truthfulqa", split: str = "dev", limit: in
         vanilla_res = generate_answer(req)
 
         # 2. Run Standard RAG Baseline
-        rag_res, passages = run_rag_baseline(req, top_k=3)
+        from hmafact.baselines.rag import RagRunner
+        class MockCfg:
+            def __init__(self):
+                self.runs_dir = "runs"
+                class RetrievalCfg:
+                    def __init__(self):
+                        self.top_k = 3
+                        self.sources = ["local_wiki", "wiki_api"]
+                self.retrieval = RetrievalCfg()
+                class LlmCfg:
+                    def __init__(self):
+                        self.roles = {"generator": "openrouter/auto"}
+                self.llm = LlmCfg()
+        rag_runner = RagRunner()
+        rag_row = rag_runner.run(s, MockCfg())
 
         print(f"[{i}/{len(samples)}] Question / Claim: {s.input_text}")
         if s.gold_answer:
@@ -56,9 +70,8 @@ def compare_baselines(dataset: str = "truthfulqa", split: str = "dev", limit: in
         print(f"     Long Answer:  {vanilla_res.long_answer[:120]}...")
 
         print(f"\n  [M4 Standard RAG Baseline - With Wikipedia RAG]:")
-        print(f"     Retrieved:    [{', '.join(p.title for p in passages[:2])}]")
-        print(f"     Short Answer: {rag_res.short_answer}")
-        print(f"     Long Answer:  {rag_res.long_answer[:120]}...")
+        print(f"     Short Answer: {rag_row.short_answer}")
+        print(f"     Long Answer:  {rag_row.answer_text[:120]}...")
 
         print("\n" + "=" * 80 + "\n")
 
